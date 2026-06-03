@@ -41,7 +41,6 @@ dashboard.html  →  Interactive dark-mode investigation UI
 Financial Fraud/
 ├── data.py            # Loads paysim.csv → builds fraud_database.db
 ├── ML.py              # Full ML pipeline: load → engineer → train → evaluate → GenAI report
-├── app.py             # (Optional) Flask/API wrapper
 ├── dashboard.html     # Dark-mode investigator dashboard (open directly in browser)
 ├── .gitignore
 └── README.md
