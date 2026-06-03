@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FraudGuard AI — Investigation Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif; background: #020617; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    input, select, textarea { color-scheme: dark; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100">
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useMemo } = React;
+
+// ═══════════════════════════════════════════════════════════
+//  MOCK DATA
+// ═══════════════════════════════════════════════════════════
+const INITIAL_TRANSACTIONS = [
+  {
+    id: 'TXN-7841', type: 'TRANSFER', amount: 187432.50,
+    oldbalanceOrg: 187432.50, newbalanceOrig: 0.00,
+    oldbalanceDest: 0.00,     newbalanceDest: 0.00,
+    errorBalanceOrig: 0.00,   errorBalanceDest: 187432.50,
+    riskScore: 97, prediction: 1, actual: 1, status: 'pending',
+    flaggedAt: '2026-06-01 09:23',
+    aiReport: 'CRITICAL: Sender account fully drained ($187,432.50) in a single TRANSFER. The receiver account shows a $187,432.50 balance discrepancy (received funds but balance stayed at $0), a hallmark indicator of a money-mule account used to conceal illicit fund movements. Recommend immediate account freeze and SAR filing.',
+    aiReportAr: 'حرج: تم تصفير حساب المرسل بالكامل في عملية تحويل واحدة بقيمة 187,432.50 دولار. حساب المستلم يُظهر تناقضاً في الرصيد (استلم الأموال لكن الرصيد بقي صفراً)، وهو مؤشر نموذجي لحساب وسيط. يُوصى بتجميد الحساب فوراً وتقديم تقرير نشاط مشبوه.',
+    notes: '', auditLog: []
+  },
+  {
+    id: 'TXN-3329', type: 'CASH_OUT', amount: 92100.00,
+    oldbalanceOrg: 92100.00, newbalanceOrig: 0.00,
+    oldbalanceDest: 14200.00, newbalanceDest: 14200.00,
+    errorBalanceOrig: 0.00,  errorBalanceDest: 92100.00,
+    riskScore: 91, prediction: 1, actual: 1, status: 'confirmed',
+    flaggedAt: '2026-05-31 14:55',
+    aiReport: 'HIGH RISK: Complete account liquidation via CASH_OUT. Receiver balance unchanged despite receiving $92,100 — strong indicator of layering activity consistent with known money-laundering typologies. The zero receiver-balance update is a deliberate obfuscation tactic.',
+    aiReportAr: 'خطر عالٍ: تصفية كاملة للحساب عبر عملية CASH_OUT. رصيد المستلم لم يتغير رغم استلام 92,100 دولار — مؤشر قوي على نشاط التعتيم المالي.',
+    notes: 'Confirmed by senior investigator. SAR filed 2026-06-01.',
+    auditLog: [{ action: 'Confirmed Fraud', by: 'Sr. Investigator', at: '2026-06-01 11:00', note: 'SAR filed.' }]
+  },
+  {
+    id: 'TXN-9903', type: 'CASH_OUT', amount: 215800.00,
+    oldbalanceOrg: 215800.00, newbalanceOrig: 0.00,
+    oldbalanceDest: 0.00,     newbalanceDest: 0.00,
+    errorBalanceOrig: 0.00,   errorBalanceDest: 215800.00,
+    riskScore: 99, prediction: 1, actual: 1, status: 'escalated',
+    flaggedAt: '2026-06-01 07:04',
+    aiReport: 'CRITICAL — HIGHEST SEVERITY: Full account drain via CASH_OUT. Both sender and receiver show maximum anomaly: sender zeroed, receiver balance shows no update despite receiving $215,800. Amount exceeds the $200K CTR threshold. Double-sided balance error is the rarest and most serious fraud pattern.',
+    aiReportAr: 'حرج — أعلى مستوى خطورة: تصفية كاملة للحساب. كلا الجانبين يُظهران تناقضاً في الرصيد. المبلغ يتجاوز عتبة تقرير العملة (200,000 دولار).',
+    notes: 'Escalated to Compliance Director. CTR filed.',
+    auditLog: [{ action: 'Escalated', by: 'Investigator', at: '2026-06-01 08:30', note: 'CTR required. Escalating.' }]
+  },
+  {
+    id: 'TXN-2288', type: 'TRANSFER', amount: 320500.00,
+    oldbalanceOrg: 320500.00, newbalanceOrig: 0.00,
+    oldbalanceDest: 0.00,     newbalanceDest: 0.00,
+    errorBalanceOrig: 0.00,   errorBalanceDest: 320500.00,
+    riskScore: 98, prediction: 1, actual: 1, status: 'pending',
+    flaggedAt: '2026-06-01 08:47',
+    aiReport: 'CRITICAL: Largest transaction flagged today at $320,500. Complete account drain; receiver account shows zero balance update — strong evidence of a shell/mule account. Double-sided balance error pattern. Immediate intervention required before funds are layered further.',
+    aiReportAr: 'حرج: أكبر عملية مُبلَّغ عنها اليوم بقيمة 320,500 دولار. تصفية كاملة للحساب وخطأ مزدوج في الرصيد. التدخل الفوري ضروري.',
+    notes: '', auditLog: []
+  },
+  {
+    id: 'TXN-6620', type: 'CASH_OUT', amount: 131000.00,
+    oldbalanceOrg: 131000.00, newbalanceOrig: 0.00,
+    oldbalanceDest: 55000.00, newbalanceDest: 55000.00,
+    errorBalanceOrig: 0.00,   errorBalanceDest: 131000.00,
+    riskScore: 94, prediction: 1, actual: 1, status: 'pending',
+    flaggedAt: '2026-06-01 10:12',
+    aiReport: 'HIGH RISK: Full sender liquidation via CASH_OUT. Receiver balance shows no update — $131,000 transferred but destination balance unchanged at $55,000. Pattern consistent with structured cash-out fraud and balance obfuscation.',
+    aiReportAr: 'خطر عالٍ: تصفية كاملة لحساب المرسل. رصيد المستلم لم يتحدث رغم استلام 131,000 دولار — مؤشر على إخفاء الأموال.',
+    notes: '', auditLog: []
+  },
+  {
+    id: 'TXN-5512', type: 'TRANSFER', amount: 45000.00,
+    oldbalanceOrg: 89000.00, newbalanceOrig: 44000.00,
+    oldbalanceDest: 120000.00, newbalanceDest: 165000.00,
+    errorBalanceOrig: 0.00,    errorBalanceDest: 0.00,
+    riskScore: 34, prediction: 0, actual: 0, status: 'cleared',
+    flaggedAt: '2026-05-30 11:20',
+    aiReport: 'LOW RISK: Transaction balances reconcile correctly on both sides. Sender balance decreased by exactly the transfer amount; receiver balance increased by the same. No mathematical anomalies detected. Consistent with regular B2B activity.',
+    aiReportAr: 'مخاطر منخفضة: أرصدة العملية متوازنة على كلا الجانبين. لا توجد تناقضات رياضية.',
+    notes: 'Cleared — routine B2B transfer.',
+    auditLog: [{ action: 'Cleared', by: 'Investigator', at: '2026-05-30 14:00', note: 'Verified with customer.' }]
+  },
+  {
+    id: 'TXN-1147', type: 'TRANSFER', amount: 8750.00,
+    oldbalanceOrg: 25000.00, newbalanceOrig: 16250.00,
+    oldbalanceDest: 3000.00,  newbalanceDest: 11750.00,
+    errorBalanceOrig: 0.00,   errorBalanceDest: 0.00,
+    riskScore: 18, prediction: 0, actual: 0, status: 'cleared',
+    flaggedAt: '2026-05-29 16:40',
+    aiReport: 'LOW RISK: All balance equations reconcile correctly. Small transfer with no suspicious patterns. Both accounts behave as expected.',
+    aiReportAr: 'مخاطر منخفضة: جميع معادلات الرصيد متوازنة. تحويل صغير بلا أنماط مشبوهة.',
+    notes: '', auditLog: []
+  },
+  {
+    id: 'TXN-4401', type: 'CASH_OUT', amount: 500.00,
+    oldbalanceOrg: 12000.00, newbalanceOrig: 11500.00,
+    oldbalanceDest: 8000.00,  newbalanceDest: 8500.00,
+    errorBalanceOrig: 0.00,   errorBalanceDest: 0.00,
+    riskScore: 11, prediction: 0, actual: 0, status: 'cleared',
+    flaggedAt: '2026-05-28 13:05',
+    aiReport: 'NO RISK: Small routine cash withdrawal. All balances reconcile perfectly. No indicators of suspicious activity whatsoever.',
+    aiReportAr: 'لا مخاطر: سحب نقدي صغير اعتيادي. جميع الأرصدة متوازنة تماماً.',
+    notes: '', auditLog: []
+  }
+];
+
+const MODEL_METRICS = {
+  accuracy: 99.2, precision: 94.7, recall: 91.3, f1: 92.9,
+  confusionMatrix: { tp: 183, fp: 11, tn: 6568, fn: 17 },
+  featureImportances: [
+    { feature: 'errorBalanceDest', importance: 0.312 },
+    { feature: 'errorBalanceOrig', importance: 0.287 },
+    { feature: 'amount',           importance: 0.198 },
+    { feature: 'oldbalanceDest',   importance: 0.081 },
+    { feature: 'newbalanceDest',   importance: 0.054 },
+    { feature: 'newbalanceOrig',   importance: 0.038 },
+    { feature: 'oldbalanceOrg',    importance: 0.020 },
+    { feature: 'type_TRANSFER',    importance: 0.010 },
+  ]
+};
+
+// ═══════════════════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════════════════
+const fmt     = n => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+const fmtFull = n => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(n);
+const now     = () => new Date().toLocaleString('en-US', { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+const riskMeta = score => score >= 80
+  ? { bg: 'bg-red-500/10',     text: 'text-red-400',     border: 'border-red-800',    bar: 'bg-red-500',     dot: 'bg-red-500',     label: 'High Risk'    }
+  : score >= 50
+  ? { bg: 'bg-amber-500/10',   text: 'text-amber-400',   border: 'border-amber-800',  bar: 'bg-amber-500',   dot: 'bg-amber-500',   label: 'Medium Risk'  }
+  : { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-800',bar: 'bg-emerald-500', dot: 'bg-emerald-500', label: 'Low Risk'     };
+
+const STATUS = {
+  pending:   { label: 'Pending Review',  bg: 'bg-amber-500/15',   text: 'text-amber-400',   icon: '⏳' },
+  confirmed: { label: 'Confirmed Fraud', bg: 'bg-red-500/15',     text: 'text-red-400',     icon: '🚨' },
+  cleared:   { label: 'Cleared',         bg: 'bg-emerald-500/15', text: 'text-emerald-400', icon: '✅' },
+  escalated: { label: 'Escalated',       bg: 'bg-purple-500/15',  text: 'text-purple-400',  icon: '⬆'  },
+};
+
+// ═══════════════════════════════════════════════════════════
+//  BASE COMPONENTS
+// ═══════════════════════════════════════════════════════════
+const Badge = ({ children, className = '' }) => (
+  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${className}`}>{children}</span>
+);
+
+const Card = ({ children, className = '' }) => (
+  <div className={`bg-slate-900 rounded-xl border border-slate-800 shadow-lg shadow-black/20 ${className}`}>{children}</div>
+);
+
+const Btn = ({ children, onClick, variant = 'default', size = 'md', disabled = false, className = '' }) => {
+  const V = {
+    default:     'bg-slate-100 text-slate-900 hover:bg-white',
+    destructive: 'bg-red-600 text-white hover:bg-red-500',
+    outline:     'border border-slate-700 text-slate-300 bg-transparent hover:bg-slate-800 hover:text-slate-100',
+    secondary:   'bg-slate-800 text-slate-200 hover:bg-slate-700',
+    ghost:       'text-slate-400 hover:bg-slate-800 hover:text-slate-200',
+    success:     'bg-emerald-600 text-white hover:bg-emerald-500',
+    warning:     'bg-amber-500 text-white hover:bg-amber-400',
+    purple:      'bg-purple-600 text-white hover:bg-purple-500',
+  };
+  const S = { sm: 'px-3 py-1.5 text-xs', md: 'px-4 py-2 text-sm', lg: 'px-5 py-2.5 text-sm font-semibold', icon: 'p-2' };
+  return (
+    <button onClick={onClick} disabled={disabled}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-1 focus:ring-offset-slate-900 disabled:opacity-40 disabled:cursor-not-allowed ${V[variant]} ${S[size]} ${className}`}>
+      {children}
+    </button>
+  );
+};
+
+const Separator = () => <div className="border-t border-slate-800 my-4" />;
+
+// ═══════════════════════════════════════════════════════════
+//  KPI STRIP
+// ═══════════════════════════════════════════════════════════
+function KPIStrip({ txns }) {
+  const pending   = txns.filter(t => t.status === 'pending').length;
+  const confirmed = txns.filter(t => t.status === 'confirmed' || t.status === 'escalated').length;
+  const kpis = [
+    { label: 'Transactions Analyzed', value: '6,821',  sub: 'Last 30 days',        icon: '📊', color: 'text-slate-100'   },
+    { label: 'Fraud Flagged by ML',   value: '247',    sub: '3.6% fraud rate',     icon: '🚨', color: 'text-red-400'     },
+    { label: 'Pending Your Review',   value: pending,  sub: 'Requires attention',   icon: '⏳', color: 'text-amber-400'   },
+    { label: 'Actioned (Session)',     value: confirmed,sub: 'Confirmed + escalated',icon: '✅', color: 'text-emerald-400' },
+  ];
+  return (
+    <div className="grid grid-cols-4 gap-4 mb-6">
+      {kpis.map(k => (
+        <Card key={k.label} className="p-5 flex items-start justify-between">
+          <div>
+            <p className="text-xs text-slate-500 font-medium">{k.label}</p>
+            <p className={`text-3xl font-black mt-1 ${k.color}`}>{k.value}</p>
+            <p className="text-[11px] text-slate-600 mt-1">{k.sub}</p>
+          </div>
+          <span className="text-2xl mt-0.5">{k.icon}</span>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  OVERVIEW TAB
+// ═══════════════════════════════════════════════════════════
+function OverviewTab({ txns, setTab, setSelected }) {
+  const transferFraud = txns.filter(t => t.type === 'TRANSFER' && t.prediction === 1).length;
+  const transferTotal = txns.filter(t => t.type === 'TRANSFER').length;
+  const cashoutFraud  = txns.filter(t => t.type === 'CASH_OUT'  && t.prediction === 1).length;
+  const cashoutTotal  = txns.filter(t => t.type === 'CASH_OUT').length;
+
+  const highRisk = [...txns]
+    .filter(t => t.riskScore >= 80 && t.status === 'pending')
+    .sort((a, b) => b.riskScore - a.riskScore);
+
+  const buckets = [
+    { label: '0–20',  count: txns.filter(t => t.riskScore < 20).length,                     color: 'bg-emerald-500' },
+    { label: '20–40', count: txns.filter(t => t.riskScore >= 20 && t.riskScore < 40).length, color: 'bg-emerald-600' },
+    { label: '40–60', count: txns.filter(t => t.riskScore >= 40 && t.riskScore < 60).length, color: 'bg-amber-500'   },
+    { label: '60–80', count: txns.filter(t => t.riskScore >= 60 && t.riskScore < 80).length, color: 'bg-orange-500'  },
+    { label: '80–100',count: txns.filter(t => t.riskScore >= 80).length,                     color: 'bg-red-500'     },
+  ];
+  const maxBucket = Math.max(...buckets.map(b => b.count), 1);
+
+  return (
+    <div className="grid grid-cols-3 gap-6">
+      <Card className="col-span-2 p-6">
+        <h3 className="text-sm font-semibold text-slate-200">Fraud by Transaction Type</h3>
+        <p className="text-xs text-slate-500 mb-5">Fraud vs total transactions in this session</p>
+        {[
+          { label: 'TRANSFER', fraud: transferFraud, total: transferTotal },
+          { label: 'CASH_OUT', fraud: cashoutFraud,  total: cashoutTotal  },
+        ].map(d => (
+          <div key={d.label} className="mb-5">
+            <div className="flex justify-between text-xs mb-1.5">
+              <span className="font-semibold text-slate-300">{d.label}</span>
+              <span className="text-slate-500">{d.fraud} fraud / {d.total} total</span>
+            </div>
+            <div className="relative h-5 bg-slate-800 rounded-full overflow-hidden">
+              <div className="absolute left-0 h-full bg-slate-700 rounded-full" style={{ width: `${(d.total / txns.length) * 100}%` }} />
+              <div className="absolute left-0 h-full bg-red-500 rounded-full" style={{ width: `${(d.fraud / txns.length) * 100}%` }} />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-semibold">
+                {d.total > 0 ? Math.round((d.fraud / d.total) * 100) : 0}% fraud rate
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <Separator />
+
+        <h3 className="text-sm font-semibold text-slate-200 mb-1">Risk Score Distribution</h3>
+        <p className="text-xs text-slate-500 mb-4">How risky are the transactions in this session?</p>
+        <div className="flex items-end gap-2 h-24">
+          {buckets.map(b => (
+            <div key={b.label} className="flex-1 flex flex-col items-center gap-1">
+              <span className="text-xs font-bold text-slate-300">{b.count}</span>
+              <div className={`w-full rounded-t transition-all ${b.color}`}
+                style={{ height: b.count > 0 ? `${(b.count / maxBucket) * 72}px` : '3px', minHeight: '3px' }} />
+              <span className="text-[10px] text-slate-500 text-center leading-tight">{b.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <Separator />
+
+        <div className="grid grid-cols-3 gap-3 text-center">
+          {[
+            { label: 'Avg Risk Score',   value: Math.round(txns.reduce((s, t) => s + t.riskScore, 0) / txns.length) },
+            { label: 'Highest Risk',     value: Math.max(...txns.map(t => t.riskScore)) },
+            { label: 'Avg Fraud Amount', value: fmt(txns.filter(t => t.prediction === 1).reduce((s, t) => s + t.amount, 0) / Math.max(txns.filter(t => t.prediction === 1).length, 1)) },
+          ].map(s => (
+            <div key={s.label} className="bg-slate-800 rounded-lg p-3 border border-slate-700">
+              <p className="text-xs text-slate-500">{s.label}</p>
+              <p className="text-lg font-bold text-slate-200 mt-0.5">{s.value}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Alerts sidebar */}
+      <Card className="p-5 flex flex-col">
+        <h3 className="text-sm font-semibold text-slate-200">🚨 High-Risk Alerts</h3>
+        <p className="text-xs text-slate-500 mb-4">Pending investigator review</p>
+        <div className="space-y-2.5 flex-1 overflow-y-auto pr-1">
+          {highRisk.length === 0
+            ? <p className="text-xs text-slate-500 text-center py-8">No pending high-risk cases</p>
+            : highRisk.map(t => {
+                const rm = riskMeta(t.riskScore);
+                return (
+                  <div key={t.id}
+                    onClick={() => { setSelected(t.id); setTab('investigation'); }}
+                    className="flex gap-3 p-3 rounded-lg border border-slate-800 hover:border-slate-600 hover:bg-slate-800 cursor-pointer transition-all group">
+                    <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${rm.dot}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-200">{t.id}</span>
+                        <span className={`text-xs font-black ${rm.text}`}>{t.riskScore}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">{t.type} · {fmt(t.amount)}</p>
+                      <p className="text-[10px] text-slate-600">{t.flaggedAt}</p>
+                    </div>
+                    <span className="text-slate-700 group-hover:text-slate-400 self-center text-sm">›</span>
+                  </div>
+                );
+              })
+          }
+        </div>
+        <Btn variant="outline" size="sm" className="w-full mt-4" onClick={() => setTab('transactions')}>
+          View all transactions →
+        </Btn>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TRANSACTIONS TAB
+// ═══════════════════════════════════════════════════════════
+function TransactionsTab({ txns, selectedId, setSelected, setTab }) {
+  const [search, setSearch]   = useState('');
+  const [filter, setFilter]   = useState('all');
+  const [sortBy, setSortBy]   = useState('riskScore');
+  const [sortDir, setSortDir] = useState('desc');
+
+  const filtered = useMemo(() => {
+    let rows = txns.filter(t => {
+      const q = search.toLowerCase();
+      const matchSearch = !q || t.id.toLowerCase().includes(q) || t.type.toLowerCase().includes(q);
+      const matchFilter = filter === 'all' || t.status === filter || (filter === 'high' && t.riskScore >= 80);
+      return matchSearch && matchFilter;
+    });
+    return [...rows].sort((a, b) => {
+      const v = sortDir === 'asc' ? 1 : -1;
+      if (sortBy === 'amount')    return v * (a.amount - b.amount);
+      if (sortBy === 'riskScore') return v * (a.riskScore - b.riskScore);
+      if (sortBy === 'flaggedAt') return v * a.flaggedAt.localeCompare(b.flaggedAt);
+      return 0;
+    });
+  }, [txns, search, filter, sortBy, sortDir]);
+
+  const toggleSort = col => {
+    if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(col); setSortDir('desc'); }
+  };
+
+  const SortBtn = ({ col, label }) => (
+    <button onClick={() => toggleSort(col)}
+      className="flex items-center gap-1 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-200">
+      {label}
+      <span className="text-[10px]">{sortBy === col ? (sortDir === 'desc' ? '↓' : '↑') : '↕'}</span>
+    </button>
+  );
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center gap-3 p-4 border-b border-slate-800 flex-wrap">
+        <input type="text" placeholder="Search by ID or type…" value={search} onChange={e => setSearch(e.target.value)}
+          className="flex-1 min-w-48 bg-slate-800 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500" />
+        <select value={filter} onChange={e => setFilter(e.target.value)}
+          className="bg-slate-800 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-500">
+          <option value="all">All Transactions</option>
+          <option value="high">High Risk (80+)</option>
+          <option value="pending">Pending Review</option>
+          <option value="confirmed">Confirmed Fraud</option>
+          <option value="escalated">Escalated</option>
+          <option value="cleared">Cleared</option>
+        </select>
+        <span className="text-xs text-slate-500">{filtered.length} results</span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-950 border-b border-slate-800">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">ID</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+              <th className="px-4 py-3 text-left"><SortBtn col="amount" label="Amount" /></th>
+              <th className="px-4 py-3 text-left"><SortBtn col="riskScore" label="Risk" /></th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Dest. Error</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">ML Flag</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+              <th className="px-4 py-3 text-left"><SortBtn col="flaggedAt" label="Flagged" /></th>
+              <th className="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800">
+            {filtered.map(t => {
+              const rm = riskMeta(t.riskScore);
+              const sc = STATUS[t.status];
+              return (
+                <tr key={t.id} onClick={() => setSelected(t.id)}
+                  className={`cursor-pointer transition-colors ${t.id === selectedId ? 'bg-slate-800' : 'hover:bg-slate-800/50'}`}>
+                  <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-300">{t.id}</td>
+                  <td className="px-4 py-3">
+                    <Badge className="bg-slate-800 text-slate-400 border border-slate-700">{t.type}</Badge>
+                  </td>
+                  <td className="px-4 py-3 font-bold text-slate-200">{fmt(t.amount)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-14 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${rm.bar}`} style={{ width: `${t.riskScore}%` }} />
+                      </div>
+                      <span className={`text-xs font-black ${rm.text}`}>{t.riskScore}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    {t.errorBalanceDest > 0
+                      ? <span className="text-red-400 font-bold">{fmt(t.errorBalanceDest)}</span>
+                      : <span className="text-emerald-500 font-medium">$0 ✓</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {t.prediction === 1
+                      ? <Badge className="bg-red-500/15 text-red-400">🚨 FRAUD</Badge>
+                      : <Badge className="bg-emerald-500/15 text-emerald-400">✅ LEGIT</Badge>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge className={`${sc.bg} ${sc.text}`}>{sc.icon} {sc.label}</Badge>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{t.flaggedAt}</td>
+                  <td className="px-4 py-3">
+                    <Btn variant="ghost" size="sm"
+                      onClick={e => { e.stopPropagation(); setSelected(t.id); setTab('investigation'); }}>
+                      Investigate →
+                    </Btn>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BALANCE FLOW DIAGRAM
+// ═══════════════════════════════════════════════════════════
+function BalanceFlow({ t }) {
+  const senderBad   = t.newbalanceOrig === 0 && t.oldbalanceOrg > 0;
+  const receiverBad = t.errorBalanceDest > 0;
+
+  const Box = ({ title, before, after, error, bad }) => (
+    <div className={`flex-1 rounded-lg p-4 border ${bad ? 'bg-red-500/10 border-red-900' : 'bg-slate-800 border-slate-700'}`}>
+      <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">{title}</p>
+      <div className="space-y-1.5">
+        <div className="flex justify-between text-xs">
+          <span className="text-slate-500">Balance before</span>
+          <span className="font-semibold text-slate-300">{fmtFull(before)}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-slate-500">Balance after</span>
+          <span className={`font-semibold ${bad ? 'text-red-400' : 'text-slate-300'}`}>{fmtFull(after)}</span>
+        </div>
+        {bad && error !== undefined && error > 0 && (
+          <div className="mt-2 pt-2 border-t border-red-900">
+            <p className="text-[10px] text-red-500 font-semibold">Balance Error</p>
+            <p className="text-xs font-bold text-red-400">{fmtFull(error)}</p>
+          </div>
+        )}
+        {bad  && <Badge className="bg-red-500/15 text-red-400 mt-1.5 text-[10px]">⚠ Anomaly detected</Badge>}
+        {!bad && <Badge className="bg-emerald-500/15 text-emerald-400 mt-1.5 text-[10px]">✓ Reconciled</Badge>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex items-stretch gap-3 mt-3">
+      <Box title="Sender Account" before={t.oldbalanceOrg} after={t.newbalanceOrig}
+           error={t.errorBalanceOrig} bad={senderBad} />
+      <div className="flex flex-col items-center justify-center gap-1.5 flex-shrink-0 px-1">
+        <span className="text-xs font-black text-slate-300">{fmtFull(t.amount)}</span>
+        <div className="flex items-center gap-0.5">
+          <div className="w-10 h-0.5 bg-slate-600" />
+          <div className="border-t-[5px] border-b-[5px] border-l-[8px] border-t-transparent border-b-transparent border-l-slate-600" />
+        </div>
+        <Badge className="bg-slate-800 text-slate-500 text-[10px] border border-slate-700">{t.type}</Badge>
+      </div>
+      <Box title="Receiver Account" before={t.oldbalanceDest} after={t.newbalanceDest}
+           error={t.errorBalanceDest} bad={receiverBad} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INVESTIGATION TAB
+// ═══════════════════════════════════════════════════════════
+function InvestigationTab({ txns, selectedId, setSelectedId, updateTxn }) {
+  const [notes, setNotes]   = useState('');
+  const [showAr, setShowAr] = useState(false);
+  const [copyOk, setCopyOk] = useState(false);
+
+  const t  = txns.find(tx => tx.id === selectedId) || txns[0];
+  const rm = riskMeta(t.riskScore);
+  const sc = STATUS[t.status];
+
+  const decide = newStatus => {
+    const entry = { action: STATUS[newStatus].label, by: 'You', at: now(), note: notes };
+    updateTxn(t.id, { status: newStatus, notes, auditLog: [...t.auditLog, entry] });
+    setNotes('');
+  };
+
+  const copyReport = () => {
+    navigator.clipboard.writeText(showAr ? t.aiReportAr : t.aiReport)
+      .then(() => { setCopyOk(true); setTimeout(() => setCopyOk(false), 2000); });
+  };
+
+  const activeCases = txns.filter(tx => tx.riskScore >= 80 || tx.status === 'pending' || tx.status === 'escalated');
+
+  // report box color by risk
+  const reportBox = t.riskScore >= 80
+    ? 'bg-red-500/10 border-red-900 text-red-200'
+    : t.riskScore >= 50
+    ? 'bg-amber-500/10 border-amber-900 text-amber-200'
+    : 'bg-emerald-500/10 border-emerald-900 text-emerald-200';
+
+  return (
+    <div className="grid grid-cols-3 gap-6">
+      {/* Case list sidebar */}
+      <div className="space-y-3">
+        <Card className="p-4">
+          <p className="text-[10px] font-bold text-slate-500 uppercase mb-3">Active Cases ({activeCases.length})</p>
+          <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
+            {activeCases.map(tx => {
+              const trm = riskMeta(tx.riskScore);
+              const tsc = STATUS[tx.status];
+              return (
+                <div key={tx.id} onClick={() => setSelectedId(tx.id)}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all ${tx.id === selectedId ? 'border-slate-500 bg-slate-800' : 'border-slate-800 hover:border-slate-600 hover:bg-slate-800/50'}`}>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-200">{tx.id}</span>
+                    <span className={`text-xs font-black ${trm.text}`}>{tx.riskScore}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{tx.type} · {fmt(tx.amount)}</p>
+                  <Badge className={`${tsc.bg} ${tsc.text} mt-1.5 text-[10px]`}>{tsc.icon} {tsc.label}</Badge>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
+
+      {/* Main panel */}
+      <div className="col-span-2 space-y-4">
+
+        {/* Transaction header */}
+        <Card className="p-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl font-black text-slate-100">{t.id}</h2>
+                <Badge className={`${sc.bg} ${sc.text}`}>{sc.icon} {sc.label}</Badge>
+                <Badge className="bg-slate-800 text-slate-400 border border-slate-700">{t.type}</Badge>
+              </div>
+              <p className="text-xs text-slate-600 mt-1">Flagged: {t.flaggedAt}</p>
+            </div>
+            <div className="text-center">
+              <div className={`text-5xl font-black leading-none ${rm.text}`}>{t.riskScore}</div>
+              <div className="text-[10px] text-slate-600 mt-1">/ 100 Risk</div>
+              <Badge className={`${rm.bg} ${rm.text} mt-1`}>{rm.label}</Badge>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 mt-4">
+            {[
+              { label: 'Transaction Amount', val: fmtFull(t.amount),                                highlight: true },
+              { label: 'ML Prediction',      val: t.prediction === 1 ? '🚨 FRAUD' : '✅ LEGIT',   highlight: t.prediction === 1 },
+              { label: 'Actual Label',        val: t.actual     === 1 ? '🚨 FRAUD' : '✅ LEGIT',   highlight: t.actual === 1 },
+            ].map(m => (
+              <div key={m.label} className={`rounded-lg p-3 border ${m.highlight ? 'bg-red-500/10 border-red-900' : 'bg-slate-800 border-slate-700'}`}>
+                <p className="text-[10px] text-slate-500 uppercase font-semibold">{m.label}</p>
+                <p className={`text-sm font-bold mt-0.5 ${m.highlight ? 'text-red-400' : 'text-slate-200'}`}>{m.val}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs font-semibold text-slate-500 uppercase mt-4 mb-2">Balance Flow Analysis</p>
+          <BalanceFlow t={t} />
+
+          <details className="mt-3">
+            <summary className="text-[11px] text-slate-600 cursor-pointer hover:text-slate-400">Show raw transaction fields</summary>
+            <div className="mt-2 grid grid-cols-2 gap-1.5">
+              {[
+                ['oldbalanceOrg',    t.oldbalanceOrg],
+                ['newbalanceOrig',   t.newbalanceOrig],
+                ['oldbalanceDest',   t.oldbalanceDest],
+                ['newbalanceDest',   t.newbalanceDest],
+                ['errorBalanceOrig', t.errorBalanceOrig],
+                ['errorBalanceDest', t.errorBalanceDest],
+              ].map(([k, v]) => (
+                <div key={k} className="flex justify-between bg-slate-800 rounded px-2.5 py-1.5 border border-slate-700">
+                  <span className="text-[10px] font-mono text-slate-500">{k}</span>
+                  <span className={`text-[10px] font-mono font-bold ${v !== 0 && k.includes('error') ? 'text-red-400' : 'text-slate-300'}`}>{fmtFull(v)}</span>
+                </div>
+              ))}
+            </div>
+          </details>
+        </Card>
+
+        {/* AI Report */}
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200">🤖 AI Investigation Report</h3>
+              <p className="text-[11px] text-slate-500">Generated by Llama 3 via Ollama</p>
+            </div>
+            <div className="flex gap-2">
+              <Btn variant="outline" size="sm" onClick={() => setShowAr(a => !a)}>
+                {showAr ? '🇺🇸 EN' : '🇸🇦 AR'}
+              </Btn>
+              <Btn variant="outline" size="sm" onClick={copyReport}>
+                {copyOk ? '✓ Copied' : '📋 Copy'}
+              </Btn>
+            </div>
+          </div>
+          <div dir={showAr ? 'rtl' : 'ltr'}
+            className={`rounded-lg p-4 text-sm leading-relaxed border ${reportBox}`}>
+            {showAr ? t.aiReportAr : t.aiReport}
+          </div>
+        </Card>
+
+        {/* Decision panel */}
+        <Card className="p-5">
+          <h3 className="text-sm font-semibold text-slate-200">⚖️ Investigator Decision</h3>
+          <p className="text-[11px] text-slate-500 mb-4">Your action will be logged to the audit trail</p>
+
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+            placeholder="Add investigation notes before making a decision (optional)…"
+            className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500 resize-none mb-4" />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Btn variant="destructive" size="lg" onClick={() => decide('confirmed')} disabled={t.status === 'confirmed'}>
+              🚨 Confirm Fraud
+            </Btn>
+            <Btn variant="success" size="lg" onClick={() => decide('cleared')} disabled={t.status === 'cleared'}>
+              ✅ Mark False Positive
+            </Btn>
+            <Btn variant="purple" size="lg" onClick={() => decide('escalated')} disabled={t.status === 'escalated'}>
+              ⬆ Escalate to Compliance
+            </Btn>
+            <Btn variant="warning" size="lg" onClick={() => decide('pending')} disabled={t.status === 'pending'}>
+              🔄 Return to Pending
+            </Btn>
+          </div>
+        </Card>
+
+        {/* Audit Log */}
+        {t.auditLog.length > 0 && (
+          <Card className="p-5">
+            <h3 className="text-sm font-semibold text-slate-200 mb-3">📋 Audit Trail</h3>
+            <div className="space-y-2">
+              {[...t.auditLog].reverse().map((log, i) => (
+                <div key={i} className="flex gap-3 p-3 bg-slate-800 rounded-lg border border-slate-700">
+                  <div className="w-1.5 rounded-full bg-slate-600 flex-shrink-0 self-stretch" />
+                  <div className="flex-1">
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs font-bold text-slate-200">{log.action}</span>
+                      <span className="text-[10px] text-slate-600">{log.at}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">By: {log.by}</p>
+                    {log.note && <p className="text-xs text-slate-400 mt-1 italic">"{log.note}"</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MODEL PERFORMANCE TAB
+// ═══════════════════════════════════════════════════════════
+function ModelTab() {
+  const { accuracy, precision, recall, f1, confusionMatrix: cm, featureImportances: fi } = MODEL_METRICS;
+  const maxImp = Math.max(...fi.map(f => f.importance));
+
+  return (
+    <div className="grid grid-cols-2 gap-6">
+      <div className="space-y-6">
+        <Card className="p-6">
+          <h3 className="text-sm font-semibold text-slate-200 mb-4">Model Performance Metrics</h3>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Accuracy',  value: accuracy,  barColor: 'bg-emerald-500', textColor: 'text-emerald-400', desc: 'Overall correct predictions'    },
+              { label: 'Precision', value: precision, barColor: 'bg-blue-500',    textColor: 'text-blue-400',    desc: 'Of predicted fraud, % correct' },
+              { label: 'Recall',    value: recall,    barColor: 'bg-amber-500',   textColor: 'text-amber-400',   desc: 'Of actual fraud, % caught'     },
+              { label: 'F1 Score',  value: f1,        barColor: 'bg-purple-500',  textColor: 'text-purple-400',  desc: 'Harmonic mean of P & R'        },
+            ].map(m => (
+              <div key={m.label} className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                <p className="text-[10px] text-slate-500 font-semibold uppercase">{m.label}</p>
+                <p className={`text-3xl font-black mt-1 ${m.textColor}`}>{m.value}%</p>
+                <div className="mt-2 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${m.barColor}`} style={{ width: `${m.value}%` }} />
+                </div>
+                <p className="text-[10px] text-slate-600 mt-1.5">{m.desc}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <h3 className="text-sm font-semibold text-slate-200 mb-1">Confusion Matrix</h3>
+          <p className="text-xs text-slate-500 mb-4">Predicted vs. actual fraud labels on test set</p>
+
+          <div className="mb-3 flex items-center gap-4 text-[10px] text-slate-500">
+            <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-800" /> Correct</div>
+            <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-amber-800"   /> Wrong flag</div>
+            <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-red-900"     /> Missed fraud</div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: 'True Negative',  count: cm.tn, sub: 'Correctly cleared', bg: 'bg-emerald-500/10 border-emerald-900', text: 'text-emerald-400' },
+              { label: 'False Positive', count: cm.fp, sub: 'Wrongly flagged',    bg: 'bg-amber-500/10 border-amber-900',    text: 'text-amber-400'   },
+              { label: 'False Negative', count: cm.fn, sub: 'Missed fraud ⚠',     bg: 'bg-red-500/10 border-red-900',        text: 'text-red-400'     },
+              { label: 'True Positive',  count: cm.tp, sub: 'Caught correctly',   bg: 'bg-emerald-500/10 border-emerald-900',text: 'text-emerald-400' },
+            ].map(c => (
+              <div key={c.label} className={`rounded-lg p-4 border text-center ${c.bg}`}>
+                <p className={`text-[10px] font-semibold uppercase ${c.text}`}>{c.label}</p>
+                <p className={`text-3xl font-black mt-1 ${c.text}`}>{c.count.toLocaleString()}</p>
+                <p className={`text-[10px] mt-0.5 opacity-70 ${c.text}`}>{c.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 p-3 bg-slate-800 border border-slate-700 rounded-lg">
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              The model missed <strong className="text-slate-200">{cm.fn} fraud cases</strong> and incorrectly flagged <strong className="text-slate-200">{cm.fp} legitimate transactions</strong>.
+              Given the high cost of missed fraud, recall of <strong className="text-amber-400">{recall}%</strong> is the most critical metric.
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      <div className="space-y-6">
+        <Card className="p-6">
+          <h3 className="text-sm font-semibold text-slate-200 mb-1">Feature Importances</h3>
+          <p className="text-xs text-slate-500 mb-5">What drives the model's predictions</p>
+          <div className="space-y-3.5">
+            {fi.map(f => (
+              <div key={f.feature}>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-mono text-slate-300">{f.feature}</span>
+                  <span className="text-xs font-black text-slate-400">{(f.importance * 100).toFixed(1)}%</span>
+                </div>
+                <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${f.importance >= 0.25 ? 'bg-red-500' : f.importance >= 0.15 ? 'bg-amber-500' : f.importance >= 0.05 ? 'bg-blue-500' : 'bg-slate-600'}`}
+                    style={{ width: `${(f.importance / maxImp) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 p-4 bg-blue-500/10 border border-blue-900 rounded-lg">
+            <p className="text-xs font-bold text-blue-300 mb-1">💡 Key Insight</p>
+            <p className="text-xs text-blue-300/80 leading-relaxed">
+              <strong className="text-blue-200">errorBalanceDest</strong> (31.2%) and <strong className="text-blue-200">errorBalanceOrig</strong> (28.7%) together
+              account for <strong className="text-blue-200">59.9%</strong> of the model's decision — confirming that balance manipulation
+              is the dominant fraud signal. These are the features engineered in <code className="bg-blue-900/50 px-1 rounded text-blue-300">ML.py</code>.
+            </p>
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <h3 className="text-sm font-semibold text-slate-200 mb-4">Model Configuration</h3>
+          <div className="space-y-2">
+            {[
+              ['Algorithm',            'Random Forest Classifier'],
+              ['Trees (n_estimators)', '100'                     ],
+              ['Class weight',         'balanced (fraud-aware)'  ],
+              ['Train / Test split',   '80% / 20% stratified'    ],
+              ['Random state',         '42'                      ],
+              ['CPU cores used',       'All (n_jobs = -1)'       ],
+              ['Saved model',          'fraud_model.joblib'      ],
+            ].map(([k, v]) => (
+              <div key={k} className="flex justify-between py-2 border-b border-slate-800 last:border-0">
+                <span className="text-xs text-slate-500">{k}</span>
+                <span className="text-xs font-semibold text-slate-300 font-mono">{v}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  APP ROOT
+// ═══════════════════════════════════════════════════════════
+function App() {
+  const [tab, setTab]               = useState('overview');
+  const [selectedId, setSelectedId] = useState('TXN-7841');
+  const [txns, setTxns]             = useState(INITIAL_TRANSACTIONS);
+
+  const updateTxn = (id, patch) => setTxns(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
+  const pending = txns.filter(t => t.status === 'pending').length;
+
+  const TABS = [
+    { id: 'overview',      label: '📊 Overview'         },
+    { id: 'transactions',  label: '📋 Transactions'      },
+    { id: 'investigation', label: '🔍 Investigation'     },
+    { id: 'model',         label: '🤖 Model Performance' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-slate-950">
+      {/* Header */}
+      <header className="bg-slate-900 border-b border-slate-800 px-8 py-3.5 sticky top-0 z-20">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-900 text-sm font-black">FG</div>
+            <div>
+              <h1 className="text-sm font-bold text-slate-100 leading-none">FraudGuard AI</h1>
+              <p className="text-[10px] text-slate-500 mt-0.5">Financial Investigation Dashboard</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Badge className="bg-emerald-500/15 text-emerald-400">● Model Active</Badge>
+            <Badge className="bg-slate-800 text-slate-400 border border-slate-700">Random Forest · 100 trees</Badge>
+            {pending > 0 && <Badge className="bg-amber-500/15 text-amber-400 animate-pulse">{pending} pending</Badge>}
+            <span className="text-xs text-slate-600">June 1, 2026</span>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-8 py-6">
+        <KPIStrip txns={txns} />
+
+        {/* Tab bar */}
+        <div className="flex gap-1 mb-6 bg-slate-900 border border-slate-800 p-1 rounded-lg w-fit">
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${tab === t.id ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'overview'      && <OverviewTab      txns={txns} setTab={setTab} setSelected={setSelectedId} />}
+        {tab === 'transactions'  && <TransactionsTab  txns={txns} selectedId={selectedId} setSelected={setSelectedId} setTab={setTab} />}
+        {tab === 'investigation' && <InvestigationTab txns={txns} selectedId={selectedId} setSelectedId={setSelectedId} updateTxn={updateTxn} />}
+        {tab === 'model'         && <ModelTab />}
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
